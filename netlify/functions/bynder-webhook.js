@@ -187,14 +187,6 @@ exports.handler = async function (event, context) {
         });
 
 
-      // 2) Initialise upload
-      const initBody = new URLSearchParams({
-        filename,
-        filesize: buffer.length.toString(),
-        // keeping it simple (Option A) – no extra metadata; you could add brandId here if you want:
-        // brandId: assetInfo.brandId
-      });
-
       const initRes = await fetch(
         "https://jakob-spott.bynder.com/api/upload/init",
         {
