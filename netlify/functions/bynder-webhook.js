@@ -30,14 +30,16 @@ exports.handler = async function(event, context) {
         {
           method: "GET",
           headers: {
-            "Authorization": `Bearer ${process.env.BYNDER_TOKEN}`,
+            "Authorization": `Token ${process.env.BYNDER_TOKEN}`,
             "Content-Type": "application/json"
           }
         }
-      );
+);
 
-      const assetInfo = await response.json();
-      console.log("Binder asset info:", assetInfo);
+
+      const raw = await response.text();
+      console.log("Raw Binder response:", raw);
+
 
     } catch (err) {
       console.error("Error fetching Binder asset info:", err);
