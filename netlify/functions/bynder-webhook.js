@@ -245,24 +245,19 @@ exports.handler = async function (event, context) {
           const end = Math.min(start + CHUNK_SIZE, buffer.length);
           const chunkBuffer = buffer.subarray(start, end);
 
-          const keyBase = mp.key; // from init
-          const chunkKey = `${keyBase}/p${chunkNumber}`;
-
           // Build multipart/form-data for S3
           const form = new FormData();
 
-          // Include all multipart_params first (except key/Filename/name, which we override)
+          // Include all multipart_params first
           for (const [k, v] of Object.entries(mp)) {
-            if (k === "key" || k === "Filename" || k === "name") continue;
             form.append(k, v);
           }
 
           // Required chunk-specific fields
-          form.append("key", chunkKey);
-          form.append("Filename", chunkKey);
           form.append("name", filename);
           form.append("chunk", String(chunkNumber));
           form.append("chunks", String(totalChunks));
+          form.append("Filename", filename);
 
           // Append the file chunk as a buffer
           form.append("file", chunkBuffer, {
@@ -271,7 +266,7 @@ exports.handler = async function (event, context) {
           });
 
           console.log(
-            `Uploading chunk ${chunkNumber}/${totalChunks} to S3 as key ${chunkKey}`
+            `Uploading chunk ${chunkNumber}/${totalChunks} to S3`
           );
 
           // Convert FormData stream to Buffer for fetch
