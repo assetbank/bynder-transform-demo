@@ -1,5 +1,7 @@
 // bynder-webhook.js
 
+const FormData = require('form-data');
+
 const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB
 
 exports.handler = async function (event, context) {
@@ -249,9 +251,11 @@ exports.handler = async function (event, context) {
           form.append("chunk", String(chunkNumber));
           form.append("chunks", String(totalChunks));
 
-          // FIX: Correct chunk variable (must be chunkBuffer)
-          const blob = new Blob([chunkBuffer]);
-          form.append("File", blob, filename);
+          // Append the file chunk as a buffer
+          form.append("file", chunkBuffer, {
+            filename: filename,
+            contentType: 'application/octet-stream'
+          });
 
           console.log(
             `Uploading chunk ${chunkNumber}/${totalChunks} to S3 as key ${chunkKey}`

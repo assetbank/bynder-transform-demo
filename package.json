@@ -1,0 +1,12 @@
+{
+  "name": "bynder-transform-demo",
+  "version": "1.0.0",
+  "description": "Netlify function for Bynder webhook processing with DAT transformations",
+  "main": "netlify/functions/bynder-webhook.js",
+  "dependencies": {
+    "form-data": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
