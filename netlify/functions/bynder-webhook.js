@@ -38,7 +38,7 @@ exports.handler = async function(event, context) {
       console.log(`Fetching metadata attempt ${i + 1}/${retries}...`);
 
       const response = await fetch(
-        `https://jakob-spott.bynder.com/api/v4/media/${mediaId}`,
+        `https://jakob-spott.bynder.com/api/v4/media/${mediaId}/`,
         {
           method: "GET",
           headers: {
