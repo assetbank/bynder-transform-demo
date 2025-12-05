@@ -22,7 +22,7 @@ exports.handler = async function(event, context) {
     }
   }
 
-  // If we extracted a media ID, try to fetch asset info
+  // Fetch asset info from Bynder API
   if (mediaId) {
     try {
       const response = await fetch(
@@ -30,17 +30,19 @@ exports.handler = async function(event, context) {
         {
           method: "GET",
           headers: {
-          "Authorization": process.env.BYNDER_TOKEN,
-          "Content-Type": "application/json"
+            "Authorization": process.env.BYNDER_TOKEN,
+            "Content-Type": "application/json"
+          }
         }
+      );
 
-        }
-);
+      // Parse JSON directly
+      const assetInfo = await response.json();
+      console.log("Asset info:", assetInfo);
 
-
-      const raw = await response.text();
-      console.log("Raw Binder response:", raw);
-
+      // Extract the DAT transform base URL
+      const datBaseUrl = assetInfo.transformBaseUrl;
+      console.log("DAT base URL:", datBaseUrl);
 
     } catch (err) {
       console.error("Error fetching Binder asset info:", err);
