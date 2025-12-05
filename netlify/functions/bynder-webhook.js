@@ -301,39 +301,43 @@ exports.handler = async function (event, context) {
         }
 
 
-      // 4) Register uploaded chunks with Bynder
-      const chunksArray = Array.from(
-        { length: totalChunks },
-        (_, idx) => idx + 1
-      );
-
-      const registerBody = JSON.stringify({
-        chunks: chunksArray,
-      });
-
-      const registerRes = await fetch(
-        `https://jakob-spott.bynder.com/api/v4/upload/${uploadId}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: process.env.BYNDER_TOKEN,
-            "Content-Type": "application/json",
-          },
-          body: registerBody,
-        }
-      );
-
-      if (!registerRes.ok) {
-        console.error(
-          `Failed to register uploaded chunks. Status: ${registerRes.status} ${registerRes.statusText}`
+      // 4) Register uploaded chunks with Bynder (only for multi-chunk uploads)
+      if (totalChunks > 1) {
+        const chunksArray = Array.from(
+          { length: totalChunks },
+          (_, idx) => idx + 1
         );
-        const regText = await registerRes.text();
-        console.error("Register chunks response body:", regText);
-        return;
-      }
 
-      const registerJson = await registerRes.json().catch(() => null);
-      console.log("Register uploaded chunks response:", registerJson);
+        const registerBody = JSON.stringify({
+          chunks: chunksArray,
+        });
+
+        const registerRes = await fetch(
+          `https://jakob-spott.bynder.com/api/v4/upload/${uploadId}`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: process.env.BYNDER_TOKEN,
+              "Content-Type": "application/json",
+            },
+            body: registerBody,
+          }
+        );
+
+        if (!registerRes.ok) {
+          console.error(
+            `Failed to register uploaded chunks. Status: ${registerRes.status} ${registerRes.statusText}`
+          );
+          const regText = await registerRes.text();
+          console.error("Register chunks response body:", regText);
+          return;
+        }
+
+        const registerJson = await registerRes.json().catch(() => null);
+        console.log("Register uploaded chunks response:", registerJson);
+      } else {
+        console.log("Single chunk upload - skipping chunk registration");
+      }
 
       // 5) Finalise the upload so Bynder creates the asset and triggers derivatives
       const finalizeRes = await fetch(
