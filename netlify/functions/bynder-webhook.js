@@ -340,15 +340,20 @@ exports.handler = async function (event, context) {
       }
 
       // 5) Finalise the upload so Bynder creates the asset and triggers derivatives
+      // Use form-urlencoded for the save endpoint
+      const finalizeParams = new URLSearchParams({
+        brandId: assetInfo.brandId || '',
+      });
+
       const finalizeRes = await fetch(
         `https://jakob-spott.bynder.com/api/v4/upload/${uploadId}/save`,
         {
           method: "POST",
           headers: {
             Authorization: process.env.BYNDER_TOKEN,
-            "Content-Type": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
           },
-          body: JSON.stringify({}),
+          body: finalizeParams.toString(),
         }
       );
 
