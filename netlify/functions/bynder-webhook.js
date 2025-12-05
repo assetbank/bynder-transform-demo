@@ -30,9 +30,10 @@ exports.handler = async function(event, context) {
         {
           method: "GET",
           headers: {
-            "Authorization": `Token ${process.env.BYNDER_TOKEN}`,
-            "Content-Type": "application/json"
-          }
+          "Authorization": process.env.BYNDER_TOKEN,
+          "Content-Type": "application/json"
+        }
+
         }
 );
 
