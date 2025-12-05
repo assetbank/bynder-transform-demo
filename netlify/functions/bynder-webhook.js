@@ -39,6 +39,19 @@ exports.handler = async function (event, context) {
     };
   }
 
+  // STEP 2.5: Prevent infinite loop - skip processing transformed assets
+  // Transformed assets use naming pattern: originalname__presetname.ext
+  if (originalMedia && originalMedia.name && originalMedia.name.includes("__")) {
+    console.log(`Skipping processing for transformed asset: ${originalMedia.name}`);
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        message: "Skipped - asset is a transformed derivative",
+        assetName: originalMedia.name
+      }),
+    };
+  }
+
   // STEP 3: Helper retry function to fetch Binder metadata
   async function fetchAssetInfoWithRetry(mediaId, retries = 6, delayMs = 4000) {
     for (let i = 0; i < retries; i++) {
