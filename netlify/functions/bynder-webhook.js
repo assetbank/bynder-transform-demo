@@ -223,55 +223,57 @@ exports.handler = async function (event, context) {
         `Uploading in ${totalChunks} chunk(s) of up to ${CHUNK_SIZE} bytes.`
       );
 
-      // 3) Upload file chunks to S3
-      for (let i = 0; i < totalChunks; i++) {
-        const chunkNumber = i + 1;
-        const start = i * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE, buffer.length);
-        const chunkBuffer = buffer.subarray(start, end);
+          // 3) Upload file chunks to S3
+        for (let i = 0; i < totalChunks; i++) {
+          const chunkNumber = i + 1;
+          const start = i * CHUNK_SIZE;
+          const end = Math.min(start + CHUNK_SIZE, buffer.length);
+          const chunkBuffer = buffer.subarray(start, end);
 
-        const keyBase = mp.key; // from init
-        const chunkKey = `${keyBase}/p${chunkNumber}`;
+          const keyBase = mp.key; // from init
+          const chunkKey = `${keyBase}/p${chunkNumber}`;
 
-        // Build multipart/form-data for S3
-        const form = new FormData();
+          // Build multipart/form-data for S3
+          const form = new FormData();
 
-        // Include all multipart_params first (except key/Filename, which we override)
-        for (const [k, v] of Object.entries(mp)) {
-          if (k === "key" || k === "Filename" || k === "name") continue;
-          form.append(k, v);
-        }
+          // Include all multipart_params first (except key/Filename/name, which we override)
+          for (const [k, v] of Object.entries(mp)) {
+            if (k === "key" || k === "Filename" || k === "name") continue;
+            form.append(k, v);
+          }
 
-        // Then add required chunk-specific fields
-        form.append("key", chunkKey);
-        form.append("Filename", chunkKey);
-        form.append("name", filename);
-        form.append("chunk", String(chunkNumber));
-        form.append("chunks", String(totalChunks));
+          // Required chunk-specific fields
+          form.append("key", chunkKey);
+          form.append("Filename", chunkKey);
+          form.append("name", filename);
+          form.append("chunk", String(chunkNumber));
+          form.append("chunks", String(totalChunks));
 
-        // And the file/chunk itself
-        form.append("File", new Blob([chunk]), filename);
+          // FIX: Correct chunk variable (must be chunkBuffer)
+          const blob = new Blob([chunkBuffer]);
+          form.append("File", blob, filename);
 
-        console.log(
-          `Uploading chunk ${chunkNumber}/${totalChunks} to S3 as key ${chunkKey}`
-        );
-
-        const s3Res = await fetch(s3Endpoint, {
-          method: "POST",
-          body: form,
-        });
-
-        if (!s3Res.ok) {
-          console.error(
-            `S3 upload failed for chunk ${chunkNumber}. Status: ${s3Res.status} ${s3Res.statusText}`
+          console.log(
+            `Uploading chunk ${chunkNumber}/${totalChunks} to S3 as key ${chunkKey}`
           );
-          const s3Text = await s3Res.text();
-          console.error("S3 response body:", s3Text);
-          return;
+
+          const s3Res = await fetch(s3Endpoint, {
+            method: "POST",
+            body: form,
+          });
+
+          if (!s3Res.ok) {
+            console.error(
+              `S3 upload failed for chunk ${chunkNumber}. Status: ${s3Res.status} ${s3Res.statusText}`
+            );
+            const s3Text = await s3Res.text();
+            console.error("S3 response body:", s3Text);
+            return;
+          }
+
+          console.log(`Chunk ${chunkNumber}/${totalChunks} uploaded successfully.`);
         }
 
-        console.log(`Chunk ${chunkNumber}/${totalChunks} uploaded successfully.`);
-      }
 
       // 4) Register uploaded chunks with Bynder
       const chunksArray = Array.from(
