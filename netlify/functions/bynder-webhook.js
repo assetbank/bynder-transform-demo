@@ -377,10 +377,15 @@ exports.handler = async function (event, context) {
   // Define your DAT presets here (keep in sync with your portal)
   const presets = ["TestPreset", "crop300"]; // adjust as needed
 
+  // Extract DAT URLs directly from assetInfo.thumbnails instead of constructing them
   let datUrls = {};
-  if (assetInfo) {
-    datUrls = generateDatUrls(assetInfo, presets);
-    console.log("Generated DAT URLs:", datUrls);
+  if (assetInfo && assetInfo.thumbnails) {
+    presets.forEach((preset) => {
+      if (assetInfo.thumbnails[preset]) {
+        datUrls[preset] = assetInfo.thumbnails[preset];
+      }
+    });
+    console.log("DAT URLs from thumbnails:", datUrls);
   }
 
   // STEP B2: Download all DAT images (into memory)
