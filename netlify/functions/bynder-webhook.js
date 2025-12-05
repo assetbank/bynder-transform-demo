@@ -276,6 +276,7 @@ exports.handler = async function (event, context) {
 
           const s3Res = await fetch(s3Endpoint, {
             method: "POST",
+            headers: form.getHeaders(),
             body: form,
           });
 
