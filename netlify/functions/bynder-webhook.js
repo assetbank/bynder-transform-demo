@@ -341,19 +341,14 @@ exports.handler = async function (event, context) {
 
       // 5) Finalise the upload so Bynder creates the asset and triggers derivatives
       const finalizeRes = await fetch(
-        `https://jakob-spott.bynder.com/api/v4/upload/${uploadId}/`,
+        `https://jakob-spott.bynder.com/api/v4/upload/${uploadId}/save`,
         {
           method: "POST",
           headers: {
             Authorization: process.env.BYNDER_TOKEN,
             "Content-Type": "application/json",
           },
-          // keeping it simple: no extra metadata in the body (Option A)
-          body: JSON.stringify({
-            // You could pass brandId, originalId, etc. here if needed.
-            // brandId: assetInfo.brandId,
-            intent: "upload",
-          }),
+          body: JSON.stringify({}),
         }
       );
 
