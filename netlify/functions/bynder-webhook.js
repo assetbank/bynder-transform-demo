@@ -277,7 +277,10 @@ exports.handler = async function (event, context) {
           // Convert FormData stream to Buffer for fetch
           const formBuffer = await new Promise((resolve, reject) => {
             const chunks = [];
-            form.on('data', (chunk) => chunks.push(chunk));
+            form.on('data', (chunk) => {
+              // Ensure chunk is a Buffer
+              chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+            });
             form.on('end', () => resolve(Buffer.concat(chunks)));
             form.on('error', reject);
             // Trigger the stream to start emitting data
