@@ -175,27 +175,17 @@ exports.handler = async function (event, context) {
     );
 
     try {
-      // 1) Get closest Amazon S3 upload endpoint
-      const endpointRes = await fetch(
-        "https://jakob-spott.bynder.com/api/upload/endpoint",
-        {
-          method: "GET",
-          headers: {
-            Authorization: process.env.BYNDER_TOKEN,
-          },
-        }
-      );
 
-      if (!endpointRes.ok) {
-        console.error(
-          `Failed to get upload endpoint. Status: ${endpointRes.status} ${endpointRes.statusText}`
-        );
-        return;
-      }
+        // 1) Bynder S3 bucket is fixed for your region (us-east-1)
+        const s3Endpoint = "https://bynder-public-us-east-1.s3.amazonaws.com/";
+        console.log("Upload S3 endpoint:", s3Endpoint);
 
-      const endpointJson = await endpointRes.json();
-      const s3Endpoint = endpointJson.endpoint;
-      console.log("Upload S3 endpoint:", s3Endpoint);
+        // 2) Initialise upload
+        const initBody = new URLSearchParams({
+          filename,
+          filesize: buffer.length.toString(),
+        });
+
 
       // 2) Initialise upload
       const initBody = new URLSearchParams({
@@ -228,11 +218,11 @@ exports.handler = async function (event, context) {
       const initJson = await initRes.json();
       console.log("Upload init response:", initJson);
 
-      const uploadId = initJson.id;
+      const uploadId = initJson.s3file?.uploadid;
       const mp = initJson.multipart_params;
 
       if (!uploadId || !mp) {
-        console.error("Upload init response missing 'id' or 'multipart_params'.");
+        console.error("Init response missing uploadid or multipart_params.", initJson);
         return;
       }
 
