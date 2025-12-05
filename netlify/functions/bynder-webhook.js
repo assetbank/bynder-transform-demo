@@ -274,10 +274,18 @@ exports.handler = async function (event, context) {
             `Uploading chunk ${chunkNumber}/${totalChunks} to S3 as key ${chunkKey}`
           );
 
+          // Convert FormData to Buffer for fetch
+          const formBuffer = await new Promise((resolve, reject) => {
+            const chunks = [];
+            form.on('data', (chunk) => chunks.push(chunk));
+            form.on('end', () => resolve(Buffer.concat(chunks)));
+            form.on('error', reject);
+          });
+
           const s3Res = await fetch(s3Endpoint, {
             method: "POST",
             headers: form.getHeaders(),
-            body: form,
+            body: formBuffer,
           });
 
           if (!s3Res.ok) {
