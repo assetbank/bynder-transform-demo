@@ -109,14 +109,82 @@ exports.handler = async function (event, context) {
     return urls;
   }
 
-  // Define your DAT presets here
-  const presets = ["TestPreset", "crop300"]; // add more as needed
+  // STEP B1: Helper to download a DAT-transformed image
+  async function downloadDatImage(url, presetName) {
+    console.log(`Downloading DAT image for preset "${presetName}" from: ${url}`);
+
+    try {
+      const res = await fetch(url, {
+        method: "GET",
+        headers: {
+          // For non-public assets, keep the same auth
+          Authorization: process.env.BYNDER_TOKEN,
+        },
+      });
+
+      if (!res.ok) {
+        console.error(
+          `Failed to download DAT image for preset "${presetName}". Status: ${res.status} ${res.statusText}`
+        );
+        return null;
+      }
+
+      const arrayBuffer = await res.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      console.log(
+        `Downloaded DAT image for preset "${presetName}". Size: ${buffer.length} bytes`
+      );
+
+      return buffer;
+    } catch (err) {
+      console.error(
+        `Error while downloading DAT image for preset "${presetName}":`,
+        err
+      );
+      return null;
+    }
+  }
+
+  // Define your DAT presets here (keep in sync with your portal)
+  const presets = ["TestPreset", "crop300"]; // adjust as needed
 
   let datUrls = {};
   if (assetInfo) {
     datUrls = generateDatUrls(assetInfo, presets);
     console.log("Generated DAT URLs:", datUrls);
   }
+
+  // STEP B2: Download all DAT images (into memory for now)
+  const downloadedImages = {};
+
+  if (assetInfo && Object.keys(datUrls).length > 0) {
+    for (const [presetName, url] of Object.entries(datUrls)) {
+      const fileBuffer = await downloadDatImage(url, presetName);
+      if (fileBuffer) {
+        downloadedImages[presetName] = fileBuffer;
+      }
+    }
+
+    console.log(
+      "Finished downloading DAT images. Presets downloaded:",
+      Object.keys(downloadedImages)
+    );
+  } else {
+    console.log("No DAT URLs generated, skipping download step.");
+  }
+
+  // STEP C (next step, not implemented yet):
+  // ----------------------------------------
+  // Here we will:
+  // - Take each entry in `downloadedImages`
+  // - Run the modern upload flow:
+  //   1) POST /v7/file_cmds/upload/prepare  (filename, filesize, chunksCount, sha256, etc.)
+  //   2) POST to the returned S3 URL to upload the file (single chunk for our case)
+  //   3) POST /api/v4/upload/{id} to register the chunk
+  //   4) Finalize and save as a new asset via the appropriate "save as new asset" endpoint
+  //
+  // For now we just log what we have, so you can see the full end of Step B in action.
 
   // STEP 5: Return success response
   return {
@@ -126,8 +194,9 @@ exports.handler = async function (event, context) {
       "Access-Control-Allow-Origin": "*",
     },
     body: JSON.stringify({
-      message: "Webhook processed",
+      message: "Webhook processed up to DAT download step",
       receivedAt: new Date().toISOString(),
+      downloadedPresets: Object.keys(downloadedImages),
     }),
   };
 };
