@@ -32,8 +32,8 @@ exports.handler = async function(event, context) {
     };
   }
 
-  // Helper function: retry metadata fetch until transformBaseUrl is available
-  async function fetchAssetInfoWithRetry(mediaId, retries = 3, delayMs = 2000) {
+  // STEP 3: Retry fetch logic with more retries
+  async function fetchAssetInfoWithRetry(mediaId, retries = 6, delayMs = 4000) {
     for (let i = 0; i < retries; i++) {
       console.log(`Fetching metadata attempt ${i + 1}/${retries}...`);
 
@@ -56,9 +56,7 @@ exports.handler = async function(event, context) {
         return assetInfo;
       }
 
-      console.log(
-        `transformBaseUrl empty. Waiting ${delayMs} ms before retry...`
-      );
+      console.log(`transformBaseUrl empty. Waiting ${delayMs} ms before retry...`);
       await new Promise(resolve => setTimeout(resolve, delayMs));
     }
 
@@ -66,7 +64,7 @@ exports.handler = async function(event, context) {
     return null;
   }
 
-  // STEP 3: Fetch metadata with retry handling
+  // STEP 4: Fetch metadata with retry handling
   let assetInfo = await fetchAssetInfoWithRetry(mediaId);
 
   if (assetInfo) {
@@ -76,7 +74,7 @@ exports.handler = async function(event, context) {
     console.log("Asset info could not be retrieved with a valid transformBaseUrl.");
   }
 
-  // STEP 4: Return simple success response
+  // STEP 5: Return simple success response
   return {
     statusCode: 200,
     headers: {
