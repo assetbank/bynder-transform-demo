@@ -250,7 +250,7 @@ exports.handler = async function (event, context) {
         form.append("chunks", String(totalChunks));
 
         // And the file/chunk itself
-        form.append("File", chunkBuffer, filename);
+        form.append("File", new Blob([chunk]), filename);
 
         console.log(
           `Uploading chunk ${chunkNumber}/${totalChunks} to S3 as key ${chunkKey}`
