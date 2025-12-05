@@ -1,5 +1,7 @@
 // bynder-webhook.js
 
+const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB
+
 exports.handler = async function (event, context) {
   console.log("Incoming request body:", event.body);
 
@@ -13,11 +15,13 @@ exports.handler = async function (event, context) {
   }
 
   let mediaId = null;
+  let originalMedia = null;
 
   if (parsed.Type === "Notification" && parsed.Message) {
     try {
       const binderMessage = JSON.parse(parsed.Message);
       mediaId = binderMessage.media_id;
+      originalMedia = binderMessage.media;
       console.log("Extracted media ID:", mediaId);
     } catch (err) {
       console.error("Failed to parse Binder Message", err);
@@ -26,6 +30,7 @@ exports.handler = async function (event, context) {
 
   // STEP 2: If no media ID, nothing more to do
   if (!mediaId) {
+    console.log("No mediaId found in webhook payload.");
     return {
       statusCode: 200,
       body: "No mediaId found in webhook",
@@ -146,6 +151,220 @@ exports.handler = async function (event, context) {
     }
   }
 
+  // STEP C1: Helper to upload a DAT image back to Binder as a new asset
+  async function uploadDatImageToBynder(presetName, buffer, assetInfo) {
+    if (!buffer || !assetInfo) {
+      console.log(
+        `Skipping upload for preset "${presetName}" - missing buffer or assetInfo.`
+      );
+      return;
+    }
+
+    const originalName = assetInfo.name || "DAT-asset";
+    const sanitizedOriginal = originalName.replace(/[^a-zA-Z0-9-_]+/g, "-");
+
+    const ext =
+      (assetInfo.extension && assetInfo.extension[0]) || "jpg";
+
+    // Your chosen naming convention:
+    // <original-name>__<preset-name>.<ext>
+    const filename = `${sanitizedOriginal}__${presetName}.${ext}`;
+
+    console.log(
+      `Preparing to upload transformed file for preset "${presetName}" as "${filename}", size ${buffer.length} bytes`
+    );
+
+    try {
+      // 1) Get closest Amazon S3 upload endpoint
+      const endpointRes = await fetch(
+        "https://jakob-spott.bynder.com/api/upload/endpoint",
+        {
+          method: "GET",
+          headers: {
+            Authorization: process.env.BYNDER_TOKEN,
+          },
+        }
+      );
+
+      if (!endpointRes.ok) {
+        console.error(
+          `Failed to get upload endpoint. Status: ${endpointRes.status} ${endpointRes.statusText}`
+        );
+        return;
+      }
+
+      const endpointJson = await endpointRes.json();
+      const s3Endpoint = endpointJson.endpoint;
+      console.log("Upload S3 endpoint:", s3Endpoint);
+
+      // 2) Initialise upload
+      const initBody = new URLSearchParams({
+        filename,
+        filesize: buffer.length.toString(),
+        // keeping it simple (Option A) – no extra metadata; you could add brandId here if you want:
+        // brandId: assetInfo.brandId
+      });
+
+      const initRes = await fetch(
+        "https://jakob-spott.bynder.com/api/upload/init",
+        {
+          method: "POST",
+          headers: {
+            Authorization: process.env.BYNDER_TOKEN,
+          },
+          body: initBody,
+        }
+      );
+
+      if (!initRes.ok) {
+        console.error(
+          `Failed to initialise upload. Status: ${initRes.status} ${initRes.statusText}`
+        );
+        const text = await initRes.text();
+        console.error("Init upload response body:", text);
+        return;
+      }
+
+      const initJson = await initRes.json();
+      console.log("Upload init response:", initJson);
+
+      const uploadId = initJson.id;
+      const mp = initJson.multipart_params;
+
+      if (!uploadId || !mp) {
+        console.error("Upload init response missing 'id' or 'multipart_params'.");
+        return;
+      }
+
+      const totalChunks = Math.ceil(buffer.length / CHUNK_SIZE);
+      console.log(
+        `Uploading in ${totalChunks} chunk(s) of up to ${CHUNK_SIZE} bytes.`
+      );
+
+      // 3) Upload file chunks to S3
+      for (let i = 0; i < totalChunks; i++) {
+        const chunkNumber = i + 1;
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, buffer.length);
+        const chunkBuffer = buffer.subarray(start, end);
+
+        const keyBase = mp.key; // from init
+        const chunkKey = `${keyBase}/p${chunkNumber}`;
+
+        // Build multipart/form-data for S3
+        const form = new FormData();
+
+        // Include all multipart_params first (except key/Filename, which we override)
+        for (const [k, v] of Object.entries(mp)) {
+          if (k === "key" || k === "Filename" || k === "name") continue;
+          form.append(k, v);
+        }
+
+        // Then add required chunk-specific fields
+        form.append("key", chunkKey);
+        form.append("Filename", chunkKey);
+        form.append("name", filename);
+        form.append("chunk", String(chunkNumber));
+        form.append("chunks", String(totalChunks));
+
+        // And the file/chunk itself
+        form.append("File", chunkBuffer, filename);
+
+        console.log(
+          `Uploading chunk ${chunkNumber}/${totalChunks} to S3 as key ${chunkKey}`
+        );
+
+        const s3Res = await fetch(s3Endpoint, {
+          method: "POST",
+          body: form,
+        });
+
+        if (!s3Res.ok) {
+          console.error(
+            `S3 upload failed for chunk ${chunkNumber}. Status: ${s3Res.status} ${s3Res.statusText}`
+          );
+          const s3Text = await s3Res.text();
+          console.error("S3 response body:", s3Text);
+          return;
+        }
+
+        console.log(`Chunk ${chunkNumber}/${totalChunks} uploaded successfully.`);
+      }
+
+      // 4) Register uploaded chunks with Bynder
+      const chunksArray = Array.from(
+        { length: totalChunks },
+        (_, idx) => idx + 1
+      );
+
+      const registerBody = JSON.stringify({
+        chunks: chunksArray,
+      });
+
+      const registerRes = await fetch(
+        `https://jakob-spott.bynder.com/api/v4/upload/${uploadId}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: process.env.BYNDER_TOKEN,
+            "Content-Type": "application/json",
+          },
+          body: registerBody,
+        }
+      );
+
+      if (!registerRes.ok) {
+        console.error(
+          `Failed to register uploaded chunks. Status: ${registerRes.status} ${registerRes.statusText}`
+        );
+        const regText = await registerRes.text();
+        console.error("Register chunks response body:", regText);
+        return;
+      }
+
+      const registerJson = await registerRes.json().catch(() => null);
+      console.log("Register uploaded chunks response:", registerJson);
+
+      // 5) Finalise the upload so Bynder creates the asset and triggers derivatives
+      const finalizeRes = await fetch(
+        `https://jakob-spott.bynder.com/api/v4/upload/${uploadId}/`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: process.env.BYNDER_TOKEN,
+            "Content-Type": "application/json",
+          },
+          // keeping it simple: no extra metadata in the body (Option A)
+          body: JSON.stringify({
+            // You could pass brandId, originalId, etc. here if needed.
+            // brandId: assetInfo.brandId,
+            intent: "upload",
+          }),
+        }
+      );
+
+      if (!finalizeRes.ok) {
+        console.error(
+          `Failed to finalise upload. Status: ${finalizeRes.status} ${finalizeRes.statusText}`
+        );
+        const finText = await finalizeRes.text();
+        console.error("Finalize upload response body:", finText);
+        return;
+      }
+
+      const finalizeJson = await finalizeRes.json().catch(() => null);
+      console.log(
+        `Successfully finalised upload for preset "${presetName}" as "${filename}". Finalize response:`,
+        finalizeJson
+      );
+    } catch (err) {
+      console.error(
+        `Error during upload flow for preset "${presetName}" / transformed file:`,
+        err
+      );
+    }
+  }
+
   // Define your DAT presets here (keep in sync with your portal)
   const presets = ["TestPreset", "crop300"]; // adjust as needed
 
@@ -155,7 +374,7 @@ exports.handler = async function (event, context) {
     console.log("Generated DAT URLs:", datUrls);
   }
 
-  // STEP B2: Download all DAT images (into memory for now)
+  // STEP B2: Download all DAT images (into memory)
   const downloadedImages = {};
 
   if (assetInfo && Object.keys(datUrls).length > 0) {
@@ -174,17 +393,14 @@ exports.handler = async function (event, context) {
     console.log("No DAT URLs generated, skipping download step.");
   }
 
-  // STEP C (next step, not implemented yet):
-  // ----------------------------------------
-  // Here we will:
-  // - Take each entry in `downloadedImages`
-  // - Run the modern upload flow:
-  //   1) POST /v7/file_cmds/upload/prepare  (filename, filesize, chunksCount, sha256, etc.)
-  //   2) POST to the returned S3 URL to upload the file (single chunk for our case)
-  //   3) POST /api/v4/upload/{id} to register the chunk
-  //   4) Finalize and save as a new asset via the appropriate "save as new asset" endpoint
-  //
-  // For now we just log what we have, so you can see the full end of Step B in action.
+  // STEP C2: Upload downloaded DAT images back to Binder as new assets
+  if (assetInfo && Object.keys(downloadedImages).length > 0) {
+    for (const [presetName, buffer] of Object.entries(downloadedImages)) {
+      await uploadDatImageToBynder(presetName, buffer, assetInfo);
+    }
+  } else {
+    console.log("No downloaded DAT images to upload.");
+  }
 
   // STEP 5: Return success response
   return {
@@ -194,7 +410,7 @@ exports.handler = async function (event, context) {
       "Access-Control-Allow-Origin": "*",
     },
     body: JSON.stringify({
-      message: "Webhook processed up to DAT download step",
+      message: "Webhook processed including DAT download and upload flow",
       receivedAt: new Date().toISOString(),
       downloadedPresets: Object.keys(downloadedImages),
     }),
