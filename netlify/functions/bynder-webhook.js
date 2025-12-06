@@ -339,21 +339,21 @@ exports.handler = async function (event, context) {
         console.log("Single chunk upload - skipping chunk registration");
       }
 
-      // 5) Finalise the upload so Bynder creates the asset and triggers derivatives
-      // Use form-urlencoded for the save endpoint
-      const finalizeParams = new URLSearchParams({
-        brandId: assetInfo.brandId || '',
-      });
+      // 5) Finalise the upload to get the importId
+      console.log(`Finalizing upload for uploadId: ${uploadId}`);
 
       const finalizeRes = await fetch(
-        `https://jakob-spott.bynder.com/api/v4/upload/${uploadId}/save`,
+        `https://jakob-spott.bynder.com/api/v4/upload/${uploadId}/`,
         {
           method: "POST",
           headers: {
             Authorization: process.env.BYNDER_TOKEN,
-            "Content-Type": "application/x-www-form-urlencoded",
+            "Content-Type": "application/json",
           },
-          body: finalizeParams.toString(),
+          body: JSON.stringify({
+            targetid: initJson.s3file.targetid,
+            s3_filename: initJson.s3_filename,
+          }),
         }
       );
 
@@ -367,9 +367,48 @@ exports.handler = async function (event, context) {
       }
 
       const finalizeJson = await finalizeRes.json().catch(() => null);
+      console.log("Finalize upload response:", finalizeJson);
+
+      // Extract importId from the finalize response
+      const importId = finalizeJson?.importId;
+      if (!importId) {
+        console.error("No importId returned from finalize endpoint:", finalizeJson);
+        return;
+      }
+
+      console.log(`Got importId: ${importId}, saving as new asset...`);
+
+      // 6) Save as new asset using the importId
+      const saveParams = new URLSearchParams({
+        brandId: assetInfo.brandId || '',
+        name: filename,
+      });
+
+      const saveRes = await fetch(
+        `https://jakob-spott.bynder.com/api/v4/media/save/${importId}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: process.env.BYNDER_TOKEN,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: saveParams.toString(),
+        }
+      );
+
+      if (!saveRes.ok) {
+        console.error(
+          `Failed to save asset. Status: ${saveRes.status} ${saveRes.statusText}`
+        );
+        const saveText = await saveRes.text();
+        console.error("Save asset response body:", saveText);
+        return;
+      }
+
+      const saveJson = await saveRes.json().catch(() => null);
       console.log(
-        `Successfully finalised upload for preset "${presetName}" as "${filename}". Finalize response:`,
-        finalizeJson
+        `Successfully saved asset for preset "${presetName}" as "${filename}". Save response:`,
+        saveJson
       );
     } catch (err) {
       console.error(
