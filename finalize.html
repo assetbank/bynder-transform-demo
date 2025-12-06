@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bynder Upload Finalizer</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      max-width: 800px;
+      width: 100%;
+      padding: 40px;
+    }
+
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 28px;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+
+    .section {
+      margin-bottom: 25px;
+    }
+
+    label {
+      display: block;
+      color: #333;
+      font-weight: 600;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 200px;
+      padding: 12px;
+      border: 2px solid #e0e0e0;
+      border-radius: 6px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      resize: vertical;
+      transition: border-color 0.3s;
+    }
+
+    textarea:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 14px 32px;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    button:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+    }
+
+    button:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .results {
+      margin-top: 30px;
+      padding: 20px;
+      background: #f8f9fa;
+      border-radius: 6px;
+      border-left: 4px solid #667eea;
+      display: none;
+    }
+
+    .results.show {
+      display: block;
+    }
+
+    .results h3 {
+      color: #333;
+      margin-bottom: 15px;
+      font-size: 18px;
+    }
+
+    .result-item {
+      padding: 12px;
+      margin-bottom: 10px;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    .result-item.success {
+      background: #d4edda;
+      border-left: 3px solid #28a745;
+      color: #155724;
+    }
+
+    .result-item.error {
+      background: #f8d7da;
+      border-left: 3px solid #dc3545;
+      color: #721c24;
+    }
+
+    .loading {
+      text-align: center;
+      color: #667eea;
+      font-weight: 600;
+      padding: 20px;
+      display: none;
+    }
+
+    .loading.show {
+      display: block;
+    }
+
+    .spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .instructions {
+      background: #e7f3ff;
+      border-left: 4px solid #2196F3;
+      padding: 15px;
+      margin-bottom: 25px;
+      border-radius: 4px;
+      font-size: 14px;
+      color: #0c5460;
+    }
+
+    .instructions ol {
+      margin-left: 20px;
+      margin-top: 10px;
+    }
+
+    .instructions li {
+      margin-bottom: 5px;
+    }
+
+    code {
+      background: #f4f4f4;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🚀 Bynder Upload Finalizer</h1>
+    <p class="subtitle">Complete pending DAT transformations</p>
+
+    <div class="instructions">
+      <strong>How to use:</strong>
+      <ol>
+        <li>Upload an asset to Bynder (triggers the webhook)</li>
+        <li>Check Netlify function logs for <code>pendingUploads</code> data</li>
+        <li>Copy the <code>pendingUploads</code> array and paste it below</li>
+        <li>Click "Finalize Uploads" to complete the process</li>
+      </ol>
+    </div>
+
+    <div class="section">
+      <label for="uploadsInput">Paste pendingUploads JSON:</label>
+      <textarea
+        id="uploadsInput"
+        placeholder='[
+  {
+    "uploadId": "...",
+    "targetid": "...",
+    "s3_filename": "...",
+    "filename": "...",
+    "presetName": "TestPreset",
+    "brandId": "...",
+    "totalChunks": 1
+  }
+]'></textarea>
+    </div>
+
+    <button id="finalizeBtn" onclick="finalizeUploads()">
+      Finalize Uploads
+    </button>
+
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <div>Processing uploads...</div>
+    </div>
+
+    <div class="results" id="results">
+      <h3>Results:</h3>
+      <div id="resultsContent"></div>
+    </div>
+  </div>
+
+  <script>
+    async function finalizeUploads() {
+      const input = document.getElementById('uploadsInput').value.trim();
+      const button = document.getElementById('finalizeBtn');
+      const loading = document.getElementById('loading');
+      const results = document.getElementById('results');
+      const resultsContent = document.getElementById('resultsContent');
+
+      // Clear previous results
+      results.classList.remove('show');
+      resultsContent.innerHTML = '';
+
+      // Validate input
+      if (!input) {
+        alert('Please paste the pendingUploads JSON data');
+        return;
+      }
+
+      let uploads;
+      try {
+        uploads = JSON.parse(input);
+        if (!Array.isArray(uploads)) {
+          throw new Error('Data must be an array');
+        }
+      } catch (err) {
+        alert('Invalid JSON format. Please paste a valid pendingUploads array.');
+        return;
+      }
+
+      // Show loading
+      button.disabled = true;
+      loading.classList.add('show');
+
+      try {
+        // Call finalize endpoint
+        const response = await fetch('/.netlify/functions/finalize-upload', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ uploads: uploads })
+        });
+
+        const data = await response.json();
+
+        // Hide loading
+        loading.classList.remove('show');
+
+        // Show results
+        results.classList.add('show');
+
+        // Display summary
+        const summary = document.createElement('div');
+        summary.innerHTML = `
+          <p style="margin-bottom: 15px; font-weight: 600;">
+            ✓ ${data.successCount} successful, ✗ ${data.failureCount} failed
+          </p>
+        `;
+        resultsContent.appendChild(summary);
+
+        // Display individual results
+        data.results.forEach(result => {
+          const item = document.createElement('div');
+          item.className = `result-item ${result.success ? 'success' : 'error'}`;
+
+          if (result.success) {
+            item.innerHTML = `
+              <strong>✓ ${result.presetName}</strong><br>
+              File: ${result.filename}<br>
+              Import ID: ${result.importId}
+            `;
+          } else {
+            item.innerHTML = `
+              <strong>✗ ${result.presetName}</strong><br>
+              File: ${result.filename}<br>
+              Error: ${result.error}
+            `;
+          }
+
+          resultsContent.appendChild(item);
+        });
+
+      } catch (err) {
+        loading.classList.remove('show');
+        alert('Error calling finalize endpoint: ' + err.message);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    // Allow Ctrl+Enter to submit
+    document.getElementById('uploadsInput').addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.key === 'Enter') {
+        finalizeUploads();
+      }
+    });
+  </script>
+</body>
+</html>
