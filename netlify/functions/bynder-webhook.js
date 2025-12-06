@@ -339,47 +339,70 @@ exports.handler = async function (event, context) {
         console.log("Single chunk upload - skipping chunk registration");
       }
 
-      // 5) Finalise the upload to get the importId
+      // 5) Finalise the upload to get the importId (with retry logic)
       console.log(`Finalizing upload for uploadId: ${uploadId}`);
 
-      // Build finalize parameters - use form-encoded data
-      const finalizeParams = new URLSearchParams({
-        id: uploadId,
-        targetid: initJson.s3file.targetid,
-        s3_filename: `${initJson.s3_filename}/p1`, // Format: path/p{chunkNumber}
-        chunks: String(totalChunks),
-      });
+      // Helper function to finalize upload with retry
+      async function finalizeUploadWithRetry(retries = 5, delayMs = 2000) {
+        const finalizeParams = new URLSearchParams({
+          id: uploadId,
+          targetid: initJson.s3file.targetid,
+          s3_filename: `${initJson.s3_filename}/p1`, // Format: path/p{chunkNumber}
+          chunks: String(totalChunks),
+        });
 
-      const finalizeRes = await fetch(
-        `https://jakob-spott.bynder.com/api/v4/upload/`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: process.env.BYNDER_TOKEN,
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: finalizeParams.toString(),
+        for (let i = 0; i < retries; i++) {
+          console.log(`Finalize attempt ${i + 1}/${retries}...`);
+
+          const finalizeRes = await fetch(
+            `https://jakob-spott.bynder.com/api/v4/upload/`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: process.env.BYNDER_TOKEN,
+                "Content-Type": "application/x-www-form-urlencoded",
+              },
+              body: finalizeParams.toString(),
+            }
+          );
+
+          const finalizeJson = await finalizeRes.json().catch(() => null);
+
+          // Check if successful and has importId
+          if (finalizeRes.ok && finalizeJson?.importId) {
+            console.log("Finalize successful! Import ID:", finalizeJson.importId);
+            return finalizeJson;
+          }
+
+          // Check if we should retry
+          if (finalizeJson?.retry || finalizeJson?.message === "Upload not ready") {
+            console.log(
+              `Upload not ready yet. Waiting ${delayMs} ms before retry...`,
+              finalizeJson
+            );
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+            continue;
+          }
+
+          // Other error - don't retry
+          console.error(
+            `Failed to finalise upload. Status: ${finalizeRes.status}`,
+            finalizeJson
+          );
+          return null;
         }
-      );
 
-      if (!finalizeRes.ok) {
-        console.error(
-          `Failed to finalise upload. Status: ${finalizeRes.status} ${finalizeRes.statusText}`
-        );
-        const finText = await finalizeRes.text();
-        console.error("Finalize upload response body:", finText);
+        console.error("Failed to finalize upload after retries");
+        return null;
+      }
+
+      const finalizeJson = await finalizeUploadWithRetry();
+      if (!finalizeJson?.importId) {
+        console.error("No importId obtained from finalize endpoint");
         return;
       }
 
-      const finalizeJson = await finalizeRes.json().catch(() => null);
-      console.log("Finalize upload response:", finalizeJson);
-
-      // Extract importId from the finalize response
-      const importId = finalizeJson?.importId;
-      if (!importId) {
-        console.error("No importId returned from finalize endpoint:", finalizeJson);
-        return;
-      }
+      const importId = finalizeJson.importId;
 
       console.log(`Got importId: ${importId}, saving as new asset...`);
 
