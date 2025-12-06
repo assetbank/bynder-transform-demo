@@ -342,18 +342,23 @@ exports.handler = async function (event, context) {
       // 5) Finalise the upload to get the importId
       console.log(`Finalizing upload for uploadId: ${uploadId}`);
 
+      // Build finalize parameters - use form-encoded data
+      const finalizeParams = new URLSearchParams({
+        id: uploadId,
+        targetid: initJson.s3file.targetid,
+        s3_filename: `${initJson.s3_filename}/p1`, // Format: path/p{chunkNumber}
+        chunks: String(totalChunks),
+      });
+
       const finalizeRes = await fetch(
-        `https://jakob-spott.bynder.com/api/v4/upload/${uploadId}/`,
+        `https://jakob-spott.bynder.com/api/v4/upload/`,
         {
           method: "POST",
           headers: {
             Authorization: process.env.BYNDER_TOKEN,
-            "Content-Type": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
           },
-          body: JSON.stringify({
-            targetid: initJson.s3file.targetid,
-            s3_filename: initJson.s3_filename,
-          }),
+          body: finalizeParams.toString(),
         }
       );
 
