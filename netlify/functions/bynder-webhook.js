@@ -339,19 +339,30 @@ exports.handler = async function (event, context) {
         console.log("Single chunk upload - skipping chunk registration");
       }
 
-      // S3 upload complete - let Bynder process it automatically
+      // S3 upload complete - return details for later finalization
       console.log(
         `Successfully uploaded transformed file for preset "${presetName}" to S3 as "${filename}"`
       );
       console.log(
         `Upload ID: ${uploadId}, Target: ${initJson.s3file.targetid}`
       );
-      console.log("Skipping finalize/save - Bynder should auto-process the S3 upload");
+
+      // Return upload details for finalization
+      return {
+        uploadId: uploadId,
+        targetid: initJson.s3file.targetid,
+        s3_filename: initJson.s3_filename,
+        filename: filename,
+        presetName: presetName,
+        brandId: assetInfo.brandId,
+        totalChunks: totalChunks,
+      };
     } catch (err) {
       console.error(
         `Error during upload flow for preset "${presetName}" / transformed file:`,
         err
       );
+      return null;
     }
   }
 
@@ -389,15 +400,19 @@ exports.handler = async function (event, context) {
   }
 
   // STEP C2: Upload downloaded DAT images back to Binder as new assets
+  const pendingUploads = [];
   if (assetInfo && Object.keys(downloadedImages).length > 0) {
     for (const [presetName, buffer] of Object.entries(downloadedImages)) {
-      await uploadDatImageToBynder(presetName, buffer, assetInfo);
+      const uploadDetails = await uploadDatImageToBynder(presetName, buffer, assetInfo);
+      if (uploadDetails) {
+        pendingUploads.push(uploadDetails);
+      }
     }
   } else {
     console.log("No downloaded DAT images to upload.");
   }
 
-  // STEP 5: Return success response
+  // STEP 5: Return success response with pending upload details
   return {
     statusCode: 200,
     headers: {
@@ -405,9 +420,12 @@ exports.handler = async function (event, context) {
       "Access-Control-Allow-Origin": "*",
     },
     body: JSON.stringify({
-      message: "Webhook processed including DAT download and upload flow",
+      message: "Webhook processed - files uploaded to S3, awaiting finalization",
       receivedAt: new Date().toISOString(),
       downloadedPresets: Object.keys(downloadedImages),
+      pendingUploads: pendingUploads,
+      finalizeUrl: "/.netlify/functions/finalize-upload",
+      note: "Call the finalize endpoint with pendingUploads data to complete the upload process"
     }),
   };
 };
