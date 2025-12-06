@@ -339,11 +339,15 @@ exports.handler = async function (event, context) {
         console.log("Single chunk upload - skipping chunk registration");
       }
 
+      // Wait for S3 to process the uploaded file before finalizing
+      console.log("Waiting 5 seconds for S3 to process the upload...");
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+
       // 5) Finalise the upload to get the importId (with retry logic)
       console.log(`Finalizing upload for uploadId: ${uploadId}`);
 
       // Helper function to finalize upload with retry
-      async function finalizeUploadWithRetry(retries = 5, delayMs = 2000) {
+      async function finalizeUploadWithRetry(retries = 3, delayMs = 3000) {
         const finalizeParams = new URLSearchParams({
           id: uploadId,
           targetid: initJson.s3file.targetid,
