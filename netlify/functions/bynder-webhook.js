@@ -339,109 +339,14 @@ exports.handler = async function (event, context) {
         console.log("Single chunk upload - skipping chunk registration");
       }
 
-      // Wait for S3 to process the uploaded file before finalizing
-      console.log("Waiting 5 seconds for S3 to process the upload...");
-      await new Promise((resolve) => setTimeout(resolve, 5000));
-
-      // 5) Finalise the upload to get the importId (with retry logic)
-      console.log(`Finalizing upload for uploadId: ${uploadId}`);
-
-      // Helper function to finalize upload with retry
-      async function finalizeUploadWithRetry(retries = 3, delayMs = 3000) {
-        const finalizeParams = new URLSearchParams({
-          id: uploadId,
-          targetid: initJson.s3file.targetid,
-          s3_filename: `${initJson.s3_filename}/p1`, // Format: path/p{chunkNumber}
-          chunks: String(totalChunks),
-        });
-
-        for (let i = 0; i < retries; i++) {
-          console.log(`Finalize attempt ${i + 1}/${retries}...`);
-
-          const finalizeRes = await fetch(
-            `https://jakob-spott.bynder.com/api/v4/upload/`,
-            {
-              method: "POST",
-              headers: {
-                Authorization: process.env.BYNDER_TOKEN,
-                "Content-Type": "application/x-www-form-urlencoded",
-              },
-              body: finalizeParams.toString(),
-            }
-          );
-
-          const finalizeJson = await finalizeRes.json().catch(() => null);
-
-          // Check if successful and has importId
-          if (finalizeRes.ok && finalizeJson?.importId) {
-            console.log("Finalize successful! Import ID:", finalizeJson.importId);
-            return finalizeJson;
-          }
-
-          // Check if we should retry
-          if (finalizeJson?.retry || finalizeJson?.message === "Upload not ready") {
-            console.log(
-              `Upload not ready yet. Waiting ${delayMs} ms before retry...`,
-              finalizeJson
-            );
-            await new Promise((resolve) => setTimeout(resolve, delayMs));
-            continue;
-          }
-
-          // Other error - don't retry
-          console.error(
-            `Failed to finalise upload. Status: ${finalizeRes.status}`,
-            finalizeJson
-          );
-          return null;
-        }
-
-        console.error("Failed to finalize upload after retries");
-        return null;
-      }
-
-      const finalizeJson = await finalizeUploadWithRetry();
-      if (!finalizeJson?.importId) {
-        console.error("No importId obtained from finalize endpoint");
-        return;
-      }
-
-      const importId = finalizeJson.importId;
-
-      console.log(`Got importId: ${importId}, saving as new asset...`);
-
-      // 6) Save as new asset using the importId
-      const saveParams = new URLSearchParams({
-        brandId: assetInfo.brandId || '',
-        name: filename,
-      });
-
-      const saveRes = await fetch(
-        `https://jakob-spott.bynder.com/api/v4/media/save/${importId}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: process.env.BYNDER_TOKEN,
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: saveParams.toString(),
-        }
-      );
-
-      if (!saveRes.ok) {
-        console.error(
-          `Failed to save asset. Status: ${saveRes.status} ${saveRes.statusText}`
-        );
-        const saveText = await saveRes.text();
-        console.error("Save asset response body:", saveText);
-        return;
-      }
-
-      const saveJson = await saveRes.json().catch(() => null);
+      // S3 upload complete - let Bynder process it automatically
       console.log(
-        `Successfully saved asset for preset "${presetName}" as "${filename}". Save response:`,
-        saveJson
+        `Successfully uploaded transformed file for preset "${presetName}" to S3 as "${filename}"`
       );
+      console.log(
+        `Upload ID: ${uploadId}, Target: ${initJson.s3file.targetid}`
+      );
+      console.log("Skipping finalize/save - Bynder should auto-process the S3 upload");
     } catch (err) {
       console.error(
         `Error during upload flow for preset "${presetName}" / transformed file:`,
