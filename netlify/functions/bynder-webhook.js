@@ -405,11 +405,19 @@ exports.handler = async function (event, context) {
     for (const [presetName, buffer] of Object.entries(downloadedImages)) {
       const uploadDetails = await uploadDatImageToBynder(presetName, buffer, assetInfo);
       if (uploadDetails) {
+        // Add unique ID and timestamp for tracking
+        uploadDetails.id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        uploadDetails.createdAt = new Date().toISOString();
         pendingUploads.push(uploadDetails);
       }
     }
   } else {
     console.log("No downloaded DAT images to upload.");
+  }
+
+  // STEP D: Store pending uploads in Upstash Redis for scheduled finalization
+  if (pendingUploads.length > 0) {
+    await storePendingUploads(pendingUploads);
   }
 
   // STEP 5: Return success response with pending upload details
@@ -420,12 +428,34 @@ exports.handler = async function (event, context) {
       "Access-Control-Allow-Origin": "*",
     },
     body: JSON.stringify({
-      message: "Webhook processed - files uploaded to S3, awaiting finalization",
+      message: "Webhook processed - files uploaded to S3 and queued for finalization",
       receivedAt: new Date().toISOString(),
       downloadedPresets: Object.keys(downloadedImages),
-      pendingUploads: pendingUploads,
-      finalizeUrl: "/.netlify/functions/finalize-upload",
-      note: "Call the finalize endpoint with pendingUploads data to complete the upload process"
+      pendingUploadsCount: pendingUploads.length,
+      note: "Uploads will be finalized automatically by scheduled function within 5 minutes"
     }),
   };
 };
+
+// Helper: Store pending uploads to Upstash Redis
+async function storePendingUploads(uploads) {
+  const UPSTASH_URL = process.env.UPSTASH_REDIS_URL;
+  const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_TOKEN;
+
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) {
+    console.error("Missing Upstash credentials - uploads will not be stored for finalization");
+    return;
+  }
+
+  try {
+    for (const upload of uploads) {
+      await fetch(`${UPSTASH_URL}/rpush/pending-uploads/${JSON.stringify(upload)}`, {
+        headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+      });
+      console.log(`Stored pending upload for preset "${upload.presetName}" in queue`);
+    }
+    console.log(`Successfully queued ${uploads.length} upload(s) for finalization`);
+  } catch (err) {
+    console.error("Error storing pending uploads to Upstash:", err);
+  }
+}
