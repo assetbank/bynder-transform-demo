@@ -98,7 +98,8 @@ async function getPendingUploads() {
       return [];
     }
 
-    return data.result.map(item => JSON.parse(item));
+    // Each item is an array containing the JSON string, unwrap it
+    return data.result.map(item => JSON.parse(item[0]));
   } catch (err) {
     console.error("Error fetching pending uploads:", err);
     return [];
