@@ -98,8 +98,15 @@ async function getPendingUploads() {
       return [];
     }
 
+    console.log("Raw Upstash data:", JSON.stringify(data.result));
+
     // Each item is an array containing the JSON string, unwrap it
-    return data.result.map(item => JSON.parse(item[0]));
+    return data.result.map((item, index) => {
+      console.log(`Item ${index}:`, JSON.stringify(item));
+      const jsonString = Array.isArray(item) ? item[0] : item;
+      console.log(`JSON string to parse:`, jsonString);
+      return JSON.parse(jsonString);
+    });
   } catch (err) {
     console.error("Error fetching pending uploads:", err);
     return [];
