@@ -1,4 +1,5 @@
 // scheduled-finalizer.js - Runs every 5 minutes to finalize pending uploads
+// Auto-processes uploads stored in Upstash Redis
 
 exports.handler = async function (event, context) {
   console.log("Scheduled finalizer running at:", new Date().toISOString());
