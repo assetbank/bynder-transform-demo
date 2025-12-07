@@ -125,8 +125,13 @@ async function removeCompletedUploads(ids) {
     // Re-add remaining uploads
     if (remaining.length > 0) {
       for (const upload of remaining) {
-        await fetch(`${UPSTASH_URL}/rpush/pending-uploads/${JSON.stringify(upload)}`, {
-          headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+        await fetch(`${UPSTASH_URL}/rpush/pending-uploads`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${UPSTASH_TOKEN}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify([JSON.stringify(upload)])
         });
       }
     }

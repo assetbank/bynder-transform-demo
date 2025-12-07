@@ -449,10 +449,20 @@ async function storePendingUploads(uploads) {
 
   try {
     for (const upload of uploads) {
-      await fetch(`${UPSTASH_URL}/rpush/pending-uploads/${JSON.stringify(upload)}`, {
-        headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+      const response = await fetch(`${UPSTASH_URL}/rpush/pending-uploads`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${UPSTASH_TOKEN}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify([JSON.stringify(upload)])
       });
-      console.log(`Stored pending upload for preset "${upload.presetName}" in queue`);
+
+      if (!response.ok) {
+        console.error(`Failed to store upload: ${response.status}`);
+      } else {
+        console.log(`Stored pending upload for preset "${upload.presetName}" in queue`);
+      }
     }
     console.log(`Successfully queued ${uploads.length} upload(s) for finalization`);
   } catch (err) {
