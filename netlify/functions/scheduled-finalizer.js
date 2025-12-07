@@ -20,8 +20,28 @@ exports.handler = async function (event, context) {
   const results = [];
   const completedIds = [];
 
-  // Process each upload
-  for (const upload of pendingUploads) {
+  // Filter uploads: only process those older than 3 minutes
+  const minAge = 3 * 60 * 1000; // 3 minutes in milliseconds
+  const now = Date.now();
+  const readyUploads = pendingUploads.filter(upload => {
+    const age = now - new Date(upload.createdAt).getTime();
+    return age >= minAge;
+  });
+
+  if (readyUploads.length < pendingUploads.length) {
+    console.log(`Skipping ${pendingUploads.length - readyUploads.length} upload(s) - too new (need 3+ min)`);
+  }
+
+  if (readyUploads.length === 0) {
+    console.log("No uploads ready for finalization yet");
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ message: "No uploads ready yet - all too new" }),
+    };
+  }
+
+  // Process each ready upload
+  for (const upload of readyUploads) {
     const { id, uploadId, targetid, s3_filename, filename, presetName, brandId, totalChunks } = upload;
 
     console.log(`\nProcessing upload: ${presetName} - ${filename}`);
@@ -65,14 +85,17 @@ exports.handler = async function (event, context) {
   }
 
   const successCount = results.filter(r => r.success).length;
-  console.log(`\n✓ Completed: ${successCount}/${pendingUploads.length}`);
+  console.log(`\n✓ Completed: ${successCount}/${readyUploads.length}`);
+  console.log(`Total in queue: ${pendingUploads.length}, Ready: ${readyUploads.length}, Skipped: ${pendingUploads.length - readyUploads.length}`);
 
   return {
     statusCode: 200,
     body: JSON.stringify({
       message: "Scheduled finalization complete",
-      processed: pendingUploads.length,
+      totalInQueue: pendingUploads.length,
+      processed: readyUploads.length,
       completed: successCount,
+      skipped: pendingUploads.length - readyUploads.length,
       results: results,
     }),
   };
@@ -147,7 +170,7 @@ async function removeCompletedUploads(ids) {
 }
 
 // Helper: Finalize upload with retry logic
-async function finalizeUploadWithRetry(uploadId, targetid, s3_filename, totalChunks, retries = 5) {
+async function finalizeUploadWithRetry(uploadId, targetid, s3_filename, totalChunks, retries = 3) {
   const finalizeParams = new URLSearchParams({
     id: uploadId,
     targetid: targetid,
